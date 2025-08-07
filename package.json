@@ -1,0 +1,24 @@
+{
+  "name": "task-service-lib",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/meobach2906/task-service-lib.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/meobach2906/task-service-lib/issues"
+  },
+  "homepage": "https://github.com/meobach2906/task-service-lib#readme",
+  "dependencies": {
+    "cron": "^4.3.3",
+    "lodash": "^4.17.21",
+    "schema-validator-lib": "^1.0.0"
+  }
+}
