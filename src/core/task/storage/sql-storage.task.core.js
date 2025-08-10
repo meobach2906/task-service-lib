@@ -81,7 +81,7 @@ class TaskSQLStorage {
 
   async resetTask({ retryable_activity_codes = [] }) {
     const now = new Date();
-    await this.knex(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.RUNNING }).whereIn('activity_code', retryable_activity_codes).update({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED, error: JSON.stringify(_ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) })), failed_at: now, updated_at: now })
+    await this.knex(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.RUNNING }).whereIn('activity_code', retryable_activity_codes).update({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED, error: JSON.stringify(_ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) })), updated_at: now })
     await this.knex(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.RUNNING }).whereNotIn('activity_code', retryable_activity_codes).update({ status:TaskManager.TASK_CONST.STATUS.FAILED,  error: JSON.stringify(_ERR.errorWithoutStack({ error: new _ERR.ERR({ message: 'Reset running' }) })), failed_at: now, updated_at: now })
   }
 
@@ -104,11 +104,25 @@ class TaskSQLStorage {
       return result;
     }
 
-    const retryable_tasks = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', parallel_activity_codes).orderBy('failed_at', 'asc').orderBy('created_at', 'asc').limit(remain_slot);
+    const retryable_tasks = [];
+
+    const reset_running_tasks = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', parallel_activity_codes).whereNotNull('failed_at').orderBy('created_at', 'asc').limit(remain_slot);
+
+    retryable_tasks.push(...reset_running_tasks);
+
+    remain_slot -= reset_running_tasks.length;
+
+    if (!(remain_slot > 0)) {
+      return result;
+    }
+
+    const temporarily_fail_task = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', parallel_activity_codes).orderBy('failed_at', 'asc').orderBy('created_at', 'asc').limit(remain_slot);
+
+    retryable_tasks.push(...temporarily_fail_task);
+
+    remain_slot -= temporarily_fail_task.length;
 
     result.runnable_tasks.push(...retryable_tasks);
-
-    remain_slot -= retryable_tasks.length;
 
     if (!(remain_slot > 0)) {
       return result;
@@ -146,7 +160,14 @@ class TaskSQLStorage {
       return result;
     }
 
-    const retryable_tasks = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', sequence_activity_codes).orderBy('failed_at', 'asc').orderBy('created_at', 'asc');
+    const retryable_tasks = [];
+
+    const reset_running_tasks = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', sequence_activity_codes).whereNull('failed_at').orderBy('created_at', 'asc');
+
+    const temporarily_fail_task = await this.knex.select('*').from(TaskSQLStorage.#table_name).where({ status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).whereIn('activity_code', sequence_activity_codes).whereNotNull('failed_at').orderBy('failed_at', 'asc').orderBy('created_at', 'asc');
+
+    retryable_tasks.push(...reset_running_tasks);
+    retryable_tasks.push(...temporarily_fail_task);
 
     for (const retryable_task of retryable_tasks) {
       if (!result.runnable_tasks.find(runnable_task => runnable_task.activity_code === retryable_task.activity_code)) {

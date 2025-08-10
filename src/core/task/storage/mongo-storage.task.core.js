@@ -72,7 +72,7 @@ class TaskMongoStorage {
 
   async resetTask({ retryable_activity_codes = [] }) {
     const now = new Date();
-    await this.task_model.updateMany({ status:TaskManager.TASK_CONST.STATUS.RUNNING, activity_code: { $in: retryable_activity_codes } }, { $set: { status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) }), failed_at: now, updated_at: now } })
+    await this.task_model.updateMany({ status:TaskManager.TASK_CONST.STATUS.RUNNING, activity_code: { $in: retryable_activity_codes } }, { $set: { status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) }), updated_at: now } })
     await this.task_model.updateMany({ status:TaskManager.TASK_CONST.STATUS.RUNNING, activity_code: { $nin: retryable_activity_codes } }, { $set: { status:TaskManager.TASK_CONST.STATUS.FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.ERR({ message: 'Reset running' }) }), failed_at: now, updated_at: now  } })
   }
 
