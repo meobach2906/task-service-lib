@@ -1,8 +1,9 @@
-const cron = require('cron');
+const { CronJob } = require('cron');
+const schema_validator = require('schema-validator-lib');
 
-const _CONST = require("../../../utils/share/_CONST.utils.share");
 const _is = require("../../../utils/share/_is.utils.share");
 const _ERR = require("../../../utils/share/_ERR.utils.share");
+const _CONST = require("../../../utils/share/_CONST.utils.share");
 
 module.exports = (() => {
 
@@ -11,27 +12,33 @@ module.exports = (() => {
     activity: {},
     storage: null,
     cron_time: '*/5 * * * * *',
-    cron_job: null
+    cron_job: null,
   };
 
 
   let WAS_RESET_TASK = false;
 
-  const _public = {
-    start: function({ cron_time = _private.cron_time }) {
+  const TaskManager = {
+    TASK_CONST: _CONST.TASK,
+    start: function({ storage, task_limit = _private.task_limit, cron_time = _private.cron_time }) {
       if (_private.cron_job) {
         throw new Error(`Already start`);
       }
 
-      const TaskService = require('../service/task-service.core');
+      if (!_is.filled_array(Object.keys(_private.activity))) {
+        throw new Error(`Activity list is empty. Add some activity before starting`);
+      }
 
-      _public.assertStorage();
+      _private.storage = storage;
+      _private.task_limit = task_limit;
 
-      _private.cron_job = new cron.CronJob({
-        cronTime: cron_time,
-        async onTick() {
-          if (!global[cron]) {
-            global[cron] = true;
+      const { TaskService } = require('../service/task-service.core');
+
+      const cron_job = new CronJob(
+        cron_time,
+        async function() {
+          if (!global['task']) {
+            global['task'] = true;
 
             try {
               if (!WAS_RESET_TASK) {
@@ -41,74 +48,78 @@ module.exports = (() => {
   
               await TaskService.process();
             } catch (error) {
-              console.log(`[ERROR: ${_ERR.stringify({ error })}]`);
+              _ERR.log({ error })
             }
             
-            global[cron] = false;
+            global['task'] = false;
           }
         },
-        start: false
-      });
+        null,
+        false,
+      );
 
-      _private.cron_job.start();
+      cron_job.start();
+
+      _private.cron_job = cron_job;
     },
-    setTaskLimit: (limit) => {
-      _private.task_limit = limit;
+    throwError: (reason) => {
+      throw new _ERR.ERR(reason);
+    },
+    throwRetryableError: (reason) => {
+      throw new _ERR.TEMPORARILY_ERR(reason);
     },
     getTaskLimit: () => {
       return _private.task_limit;
     },
-    setStorage: ({ storage }) => {
-      _private.storage = storage;
-    },
-    getStorage: () => {
-      return _private.storage;
-    },
     assertStorage: () => {
-      const storage = _public.getStorage();
+      const storage = _private.storage;
       if (!storage) {
         throw new Error(`Storage required`);
       }
       return storage;
     },
-    getActivity: function({ activity_code }) {
-      return _private.activity[activity_code];
+    getActivity: function({ code }) {
+      return _private.activity[code];
     },
-    assertActivity: function({ activity_code }) {
-      const activity = _public.getActivity();
+    assertActivity: function({ code }) {
+      const activity = TaskManager.getActivity({ code });
       if (!activity) {
-        throw new Error(`Activity required`);
+        throw new Error(`Activity not found`);
       }
       return activity;
     },
     processTask: async function({ task }) {
-      const activity = _public.assertActivity({ activity_code: task.activity_code });
+      const activity = TaskManager.assertActivity({ code: task.activity_code });
       return activity.process({ task });
     },
-    addActivity: function({
-      activity_code,
+    addActivity: function(input = {
+      code,
       process,
-      setting = {
-        mode: _CONST.TASK.MODE.PARALLEL,
-        resetable: true,
+      setting: {
+        mode:TaskManager.TASK_CONST.MODE.PARALLEL,
         retryable: true,
         priority: 0,
+        max_retry_times: null,
       }
     }) {
-      if (_private.activity[activity_code]) {
-        throw new Error(`Activity ${activity_code} already exist`);
+      if (_private.cron_job) {
+        throw new Error(`Cannot add activity after start`);
       }
 
-      _private.activity[activity_code] = Object.freeze({
-        activity_code: activity_code,
+      if (_private.activity[input.code]) {
+        throw new Error(`Activity ${input.code} already exist`);
+      }
+
+      const { code, process, setting } = schema_validator.assert_validate({ code: 'ADD_ACTIVITY', input: input })
+
+      _private.activity[code] = Object.freeze({
+        code: code,
         ...setting,
-        process: async ({ task, tasks = [] }) => {
-          return process({ task, tasks })
-        }
+        process: process,
       })
     },
-    resetableActivities: function() {
-      return Object.values(_private.activity).filter(activity => _is.activity.resetable({ activity }))
+    retryableActivities: function() {
+      return Object.values(_private.activity).filter(activity => _is.activity.retryable({ activity }))
     },
     parallelActivities: function() {
       return Object.values(_private.activity).filter(activity => _is.activity.parallel({ activity }))
@@ -118,5 +129,46 @@ module.exports = (() => {
     },
   };
 
-  return _public;
+  schema_validator.schema.type.add({ key: 'integer', handler: {
+    convert: ({ value }) => Number(value),
+    check: ({ value }) => typeof value === 'number' && value % 1 === 0,
+  }})
+
+  schema_validator.schema.type.add({ key: 'function', handler: {
+    convert: ({ value }) => value,
+    check: ({ value }) => typeof value === 'function',
+  }})
+
+  schema_validator.schema.type.add({ key: 'async_function', handler: {
+    convert: ({ value }) => value,
+    check: ({ value }) => value && value.constructor && value.constructor.name === 'AsyncFunction',
+  }})
+
+  schema_validator.compile({
+    code: 'ADD_ACTIVITY',
+    schema: {
+      code: { type: 'string', require: true, nullable: false },
+      process: { type: 'async_function', require: true, nullable: true },
+      setting: {
+        type: 'object',
+        default: {},
+        properties: {
+          mode: { type: 'string', default: TaskManager.TASK_CONST.MODE.PARALLEL, enum: Object.values(TaskManager.TASK_CONST.MODE) },
+          retryable: { type: 'boolean', default: true },
+          priority: { type: 'integer', default: 0, max: 9 },
+          max_retry_times: { type: 'integer', default: null, nullable: true, check: ({ info: { root, field }, value }) => {
+            const result = { errors: [] };
+            if (value && !root.retryable) {
+              result.errors.push({ field, invalid: 'activity unretryable' });
+            }
+            return result;
+          } },
+        },
+      }
+    }
+  })
+
+  return {
+    TaskManager: TaskManager
+  };
 })();

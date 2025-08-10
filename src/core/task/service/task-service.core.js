@@ -1,7 +1,7 @@
 const _ = require('lodash');
 const _is = require('../../../utils/share/_is.utils.share');
 const _to = require('../../../utils/share/_to.utils.share');
-const TaskManager = require('../manager/task-manager.core');
+const { TaskManager } = require('../manager/task-manager.core');
 
 module.exports = (() => {
 
@@ -9,18 +9,22 @@ module.exports = (() => {
   };
 
   const _public = {
+    createTask: async function({ activity_code, input = {} }) {
+      const storage = TaskManager.assertStorage();
+      return storage.createTask({ activity_code, input });
+    },
     resetTask: async function() {
-      const unresetable_activities = TaskManager.resetableActivities();
+      const retryable_activities = TaskManager.retryableActivities();
 
-      const unresetable_activity_codes = unresetable_activities.map(activity => activity.code);
+      const retryable_activity_codes = retryable_activities.map(activity => activity.code);
 
       const storage = TaskManager.assertStorage();
 
-      await storage.resetTask({ unresetable_activity_codes });
+      await storage.resetTask({ retryable_activity_codes });
     },
     process: async function() {
       await Promise.all([
-        async () => {
+        (async () => {
           const parallel_activities = TaskManager.parallelActivities();
 
           const parallel_activity_codes = parallel_activities.map(activity => activity.code);
@@ -36,8 +40,8 @@ module.exports = (() => {
               console.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
             }
           }
-        },
-        async () => {
+        })(),
+        (async () => {
           const sequence_activities = TaskManager.sequenceActivities();
 
           const sequence_activity_codes = sequence_activities.map(activity => activity.code);
@@ -54,10 +58,12 @@ module.exports = (() => {
             }
 
           }
-        }
+        })()
       ]);
     }
   };
 
-  return _public;
+  return {
+    TaskService: _public,
+  };
 })();

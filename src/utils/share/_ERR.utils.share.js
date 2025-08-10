@@ -27,6 +27,12 @@
   const _ERR = {
     ERR,
     TEMPORARILY_ERR,
+    log({ error }) {
+      if (!(error.stack && error.stack.length > 0)) {
+        error.stack = new Error().stack;
+      }
+      console.log(`[ERROR] ${_ERR.stringify({ error })}`);
+    },
     makeErrorObject: ({ error, includes = [], ignore_values = [undefined, null, ''], excludes = [] }) => {
       const obj = Object.assign({}, error);
 
