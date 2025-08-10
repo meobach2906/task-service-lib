@@ -9,6 +9,7 @@ module.exports = (() => {
 
   const _private = {
     task_limit: 5,
+    task_expiry_after_finish: 10 * 24 * 60 * 60,
     activity: {},
     storage: null,
     cron_time: '*/5 * * * * *',
@@ -20,7 +21,7 @@ module.exports = (() => {
 
   const TaskManager = {
     TASK_CONST: _CONST.TASK,
-    start: function({ storage, task_limit = _private.task_limit, cron_time = _private.cron_time }) {
+    start: function({ storage, task_limit = _private.task_limit, cron_time = _private.cron_time, task_expiry_after_finish = _private.task_expiry_after_finish }) {
       if (_private.cron_job) {
         throw new Error(`Already start`);
       }
@@ -31,6 +32,7 @@ module.exports = (() => {
 
       _private.storage = storage;
       _private.task_limit = task_limit;
+      _private.task_expiry_after_finish = task_expiry_after_finish;
 
       const { TaskService } = require('../service/task-service.core');
 
@@ -45,6 +47,8 @@ module.exports = (() => {
                 await TaskService.resetTask();
                 WAS_RESET_TASK = true;
               }
+
+              await TaskService.expiredTask();
   
               await TaskService.process();
             } catch (error) {
@@ -70,6 +74,9 @@ module.exports = (() => {
     },
     getTaskLimit: () => {
       return _private.task_limit;
+    },
+    getTaskExpireAfterFinish: () => {
+      return _private.task_expiry_after_finish;
     },
     assertStorage: () => {
       const storage = _private.storage;

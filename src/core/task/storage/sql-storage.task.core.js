@@ -53,6 +53,10 @@ class TaskSQLStorage {
     }
   }
 
+  async expiredTask() {
+    await this.knex(TaskSQLStorage.#table_name).del().where('finished_at', '<=', new Date(Date.now() - TaskManager.getTaskExpireAfterFinish()))
+  }
+
   async createTask({ activity_code, input = {} }) {
 
     const result = {

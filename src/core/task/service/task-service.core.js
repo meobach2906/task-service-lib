@@ -13,6 +13,11 @@ module.exports = (() => {
       const storage = TaskManager.assertStorage();
       return storage.createTask({ activity_code, input });
     },
+    expiredTask: async function() {
+      const storage = TaskManager.assertStorage();
+
+      return storage.expiredTask();
+    },
     resetTask: async function() {
       const retryable_activities = TaskManager.retryableActivities();
 

@@ -46,8 +46,12 @@ class TaskMongoStorage {
     this.task_schema.index({ status: 1, failed_at: 1, created_at: 1 });
     this.task_schema.index({ status: 1, priority: 1, created_at: 1 });
 
+    this.task_schema.index({ finished_at: 1 }, { expireAfterSeconds: TaskManager.getTaskExpireAfterFinish() });
+
     this.task_model = this.mongoose.model(TaskMongoStorage.#schema_name, this.task_schema);
   }
+
+  async expiredTask() {}
 
   async createTask({ activity_code, input = {} }) {
     const result = {
