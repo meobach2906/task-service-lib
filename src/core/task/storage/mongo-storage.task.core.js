@@ -180,7 +180,9 @@ class TaskMongoStorage {
       updated_task: null,
     };
 
-    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id, updated_at: task.updated_at }, { $set: { running_at: new Date(), status:TaskManager.TASK_CONST.STATUS.RUNNING } }, { new: true });
+    const now = new Date();
+
+    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id, updated_at: task.updated_at }, { $set: { status:TaskManager.TASK_CONST.STATUS.RUNNING, running_at: now,  updated_at: now } }, { new: true });
 
     if (!result.updated_task) {
       throw new Error(`Cannot start task because task updated before`);
