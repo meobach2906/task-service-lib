@@ -1,6 +1,3 @@
-const _ = require('lodash');
-const _is = require('../../../utils/share/_is.utils.share');
-const _to = require('../../../utils/share/_to.utils.share');
 const { TaskManager } = require('../manager/task-manager.core');
 
 module.exports = (() => {

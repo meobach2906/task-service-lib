@@ -53,13 +53,12 @@ Flow:
 
 2. Start Manager
   ```
-    TaskManager.start({ storage, task_limit, cron_time, task_expiry_after_finish });
+    TaskManager.start({ storage, task_limit, cron_time });
 
     // task_limit: default 5: only 5 tasks execute at a time
 
     // cron_time: default '*/5 * * * * *': run cronjob each 5 second
 
-    // task_expiry_after_finish: default: 10 * 24 * 60 * 60 (second): task expire after finish
   ```
 
   + Storage:
@@ -70,7 +69,7 @@ Flow:
 
       await mongoose.connect('mongodb://localhost:27017/<db>');
 
-      const storage = await TaskStorage.TaskMongoStorage.init({ mongoose })
+      const storage = await TaskStorage.TaskMongoStorage.init({ mongoose, expired: <expired> })
     ```
 
     + SQL storage
@@ -89,7 +88,13 @@ Flow:
         }
       })
 
-      const storage = await TaskStorage.TasSQLStorage.init({ knex: db })
+      const storage = await TaskStorage.TasSQLStorage.init({ knex: db, expired: <expired> })
+    ```
+
+    ```
+      expired: <expired>
+      // auto remove finished task after <expired> second
+      // * in MONGODB, must remove finished_at ttl index to reset
     ```
 
 3. Create Task

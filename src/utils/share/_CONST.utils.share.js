@@ -18,7 +18,6 @@
       MODE: {
         PARALLEL: 'PARALLEL',
         SEQUENCE: 'SEQUENCE',
-        BATCH: 'BATCH',
       }
     }
   };

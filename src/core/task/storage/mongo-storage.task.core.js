@@ -10,16 +10,17 @@ class TaskMongoStorage {
 
   CODE = TaskManager.TASK_CONST.STORAGE.MONGO;
 
-  static async init({ mongoose }) {
-    const storage = new TaskMongoStorage({ mongoose });
+  static async init({ mongoose, expired = 10 * 24 * 60 * 60 }) {
+    const storage = new TaskMongoStorage({ mongoose, expired });
     await storage.#initModel();
     return storage;
   }
 
-  constructor({ mongoose }) {
+  constructor({ mongoose, expired = 10 * 24 * 60 * 60 }) {
     if (!TaskMongoStorage.storage) {
       TaskMongoStorage.storage = this;
       this.mongoose = mongoose;
+      this.expired = expired;
     }
 
     return TaskMongoStorage.storage;
@@ -46,7 +47,7 @@ class TaskMongoStorage {
     this.task_schema.index({ status: 1, failed_at: 1, created_at: 1 });
     this.task_schema.index({ status: 1, priority: 1, created_at: 1 });
 
-    this.task_schema.index({ finished_at: 1 }, { expireAfterSeconds: TaskManager.getTaskExpireAfterFinish() });
+    this.task_schema.index({ finished_at: 1 }, { expireAfterSeconds: this.expired });
 
     this.task_model = this.mongoose.model(TaskMongoStorage.#schema_name, this.task_schema);
   }
@@ -219,7 +220,7 @@ class TaskMongoStorage {
     return result;
   }
 
-  async process({ task }) {
+  async process({ task, is_waiting = false }) {
     const { updated_task } = await this.startTask({ task });
 
     const promise = TaskManager.processTask({ task: updated_task })
@@ -231,8 +232,12 @@ class TaskMongoStorage {
         console.log(`[FAILED] [PROCESS_TASK] [ID: ${String(task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
         return await this.failTask({ task: updated_task, error });
       })
+    
+    if (is_waiting) {
+      return await promise;
+    }
 
-    return promise;
+    return { updated_task };
   }
 
 }

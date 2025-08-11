@@ -1,10 +1,10 @@
 {
   "name": "task-service-lib",
-  "version": "1.0.1",
+  "version": "1.0.0",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha"
   },
   "repository": {
     "type": "git",
@@ -28,5 +28,15 @@
     "pg": "^8.16.3",
     "chai": "^5.2.1",
     "mocha": "^11.7.1"
+  },
+  "mocha": {
+    "require": [
+      "chai/register-expect.js,chai/register-expect.js,chai/register-assert.js"
+    ],
+    "spec": "./test/**/*.spec.js",
+    "extension": [
+      "js"
+    ],
+    "recursive": true
   }
 }
