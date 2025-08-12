@@ -13,7 +13,7 @@ module.exports = (() => {
     storage: null,
     cron_time: '*/5 * * * * *',
     cron_job: null,
-    verbose: true,
+    verbose: false,
   };
 
 
@@ -69,7 +69,7 @@ module.exports = (() => {
       }
     },
     log: (str) => {
-      if (TaskManager.verbose) {
+      if (_private.verbose) {
         console.log(str);
       }
     },
