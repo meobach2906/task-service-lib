@@ -53,11 +53,13 @@ Flow:
 
 2. Start Manager
   ```
-    TaskManager.start({ storage, task_limit, cron_time });
+    TaskManager.start({ storage, task_limit, cron_time, verbose });
 
     // task_limit: default 5: only 5 tasks execute at a time
 
     // cron_time: default '*/5 * * * * *': run cronjob each 5 second
+
+    // verbose: default false: set true to log each error when process task
 
   ```
 

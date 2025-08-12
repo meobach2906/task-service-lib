@@ -277,6 +277,7 @@ describe('TASK_SERVICE', () => {
         TaskManager.start({
           storage: storage.storage,
           task_limit: 3,
+          verbose: true,
           is_test: true
         });
       })
@@ -519,6 +520,7 @@ describe('TASK_SERVICE', () => {
         TaskManager.start({
           storage: storage.storage,
           task_limit: 3,
+          verbose: true,
         });
 
         await sleep(4000)

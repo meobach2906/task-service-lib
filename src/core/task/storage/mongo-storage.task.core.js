@@ -225,11 +225,11 @@ class TaskMongoStorage {
 
     const promise = TaskManager.processTask({ task: updated_task })
       .then(async result => {
-        console.log(`[FINISHED] [PROCESS_TASK] [ID: ${String(task._id)}] [RESULT: ${JSON.stringify(result)}]`);
+        TaskManager.log(`[FINISHED] [PROCESS_TASK] [ID: ${String(task._id)}] [RESULT: ${JSON.stringify(result)}]`);
         return await this.finishTask({ task: updated_task, result });
       })
       .catch(async error => {
-        console.log(`[FAILED] [PROCESS_TASK] [ID: ${String(task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
+        TaskManager.log(`[FAILED] [PROCESS_TASK] [ID: ${String(task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
         return await this.failTask({ task: updated_task, error });
       })
     

@@ -39,7 +39,7 @@ module.exports = (() => {
             try {
               await storage.process({ task: runnable_task });
             } catch (error) {
-              console.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
+              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
             }
           }
         })(),
@@ -56,7 +56,7 @@ module.exports = (() => {
             try {
               await storage.process({ task: runnable_task });
             } catch (error) {
-              console.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
+              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
             }
 
           }
