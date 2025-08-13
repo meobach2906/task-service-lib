@@ -8,6 +8,10 @@
     return Array.isArray(value) && value.length > 0;
   }
 
+  _is.filled_object = (value) => {
+    return typeof value === 'object' && value != null && Object.keys(value).length > 0;
+  }
+
   _is.retry = ({ error }) => {
     if (error && error.is_retry) {
       return true;

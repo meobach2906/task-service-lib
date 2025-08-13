@@ -7,6 +7,7 @@
       STORAGE: {
         MONGO: 'MONGO',
         SQL: 'SQL',
+        REDIS: 'REDIS',
       },
       STATUS: {
         IDLE: 'IDLE',

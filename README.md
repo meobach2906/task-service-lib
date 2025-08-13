@@ -1,6 +1,6 @@
 This is library to execute task
 
-It will create task in database then cronjob fetch task then execute
+It will create task in database (Mongodb, SQL data, Redis) then cronjob fetch task then execute
 
 Flow:
 
@@ -91,6 +91,18 @@ Flow:
       })
 
       const storage = await TaskStorage.TasSQLStorage.init({ knex: db, expired: <expired> })
+    ```
+
+    + Redis storage:
+      ```
+      const { createClient } = require('redis');
+      const { TaskStorage } = require('task-service-lib');
+
+      const redis = createClient();
+
+      await redis.connect();
+
+      const storage = await TaskStorage.TaskRedisStorage.init({ redis: redis, expired: <expired> })
     ```
 
     ```

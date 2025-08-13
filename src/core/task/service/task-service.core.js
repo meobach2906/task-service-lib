@@ -1,3 +1,5 @@
+const _ERR = require('../../../utils/share/_ERR.utils.share');
+
 const { TaskManager } = require('../manager/task-manager.core');
 
 module.exports = (() => {
@@ -39,7 +41,7 @@ module.exports = (() => {
             try {
               await storage.process({ task: runnable_task });
             } catch (error) {
-              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
+              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
             }
           }
         })(),
@@ -56,7 +58,7 @@ module.exports = (() => {
             try {
               await storage.process({ task: runnable_task });
             } catch (error) {
-              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}]`);
+              TaskManager.log(`[FAILED] [ID: ${String(runnable_task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
             }
 
           }

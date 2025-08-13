@@ -1,9 +1,10 @@
+const uuid = require('uuid');
 const mongoose = require('mongoose');
 const knex = require('knex');
+const { createClient } = require('redis');
 
-const uuid = require('uuid');
-
-const { TaskManager, TaskService, TaskStorage: { TaskMongoStorage, TaskSQLStorage } } = require('../index');
+const _is = require("../src/utils/share/_is.utils.share");
+const { TaskManager, TaskService, TaskStorage: { TaskMongoStorage, TaskSQLStorage, TaskRedisStorage } } = require('../index');
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms))
 
@@ -58,6 +59,58 @@ const storages = [
     insert_record: async function (task) {
       task._id = uuid.v4();
       await this.storage.knex('tasks').insert(task);
+    }
+  },
+  {
+    code: 'REDIS',
+    storage: null,
+    init_storage: async function () {
+      const redis = createClient();
+
+      await redis.connect();
+
+      this.storage = await TaskRedisStorage.init({ redis: redis, expired: 5 });  
+    },
+    clear_record: async function() {
+      await this.storage.redis.flushDb();
+    },
+    all_task: async function() {
+      const tasks = [];
+      const task_ids = await this.storage.redis.lRange(`tasks`, 0, -1)
+      for (const task_id of task_ids) {
+        const task = await this.storage.redis.hGetAll(`task:${task_id}`)
+        if (_is.filled_object(task)) {
+          tasks.push(task);
+        }
+      }
+      return tasks;
+    },
+    parse_result_error: function(val) {
+      return val ? JSON.parse(val) : null;
+    },
+    insert_record: async function (task) {
+      if (task.failed_at) {
+        task.failed_at = task.failed_at.toISOString()
+      }
+
+
+      if (task.created_at) {
+        task.created_at = task.created_at.toISOString()
+      }
+
+      task._id = uuid.v4();
+
+      await this.storage.redis.rPush(`tasks`, task._id);
+
+      await this.storage.redis.hSet(`task:${task._id}`, task)
+
+      if (task.status === 'TEMPORARILY_FAILED') {
+        await this.storage.redis.rPush(`temporarily_failed_tasks`, JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: '1', created_at: task.created_at }));
+      }
+
+      if (task.status === 'RUNNING') {
+        await this.storage.redis.rPush(`running_tasks`, JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: '1', created_at: task.created_at }));
+      }
     }
   }
 ]
@@ -170,6 +223,11 @@ const reset_tests = [
     expected_process_1: { activity_code: 'PARALLEL', status: 'RUNNING' },
   },
   {
+    task: { activity_code: 'PARALLEL_UNRETRYABLE', status: 'RUNNING' },
+    expected_reset_1: { activity_code: 'PARALLEL_UNRETRYABLE', status: 'FAILED' },
+    expected_process_1: { activity_code: 'PARALLEL_UNRETRYABLE', status: 'FAILED' },
+  },
+  {
     task: { activity_code: 'PARALLEL_LOWEST_PRIORITY', status: 'RUNNING' },
     expected_reset_1: { activity_code: 'PARALLEL_LOWEST_PRIORITY', status: 'TEMPORARILY_FAILED' },
     expected_process_1: { activity_code: 'PARALLEL_LOWEST_PRIORITY', status: 'RUNNING' },
@@ -277,7 +335,7 @@ describe('TASK_SERVICE', () => {
         TaskManager.start({
           storage: storage.storage,
           task_limit: 3,
-          verbose: true,
+          verbose: false,
           is_test: true
         });
       })
@@ -410,7 +468,8 @@ describe('TASK_SERVICE', () => {
       })   
       
       it('EXPIRE_TASK', async function() {
-        if (storage.code != 'SQL') {
+        if (storage.code === 'MONGO') {
+          await TaskService.expiredTask();
           return
         }
         this.timeout(30000);
@@ -442,18 +501,24 @@ describe('TASK_SERVICE', () => {
         await storage.insert_record({
           activity_code: 'SEQUENCE',
           status: 'TEMPORARILY_FAILED',
-          failed_at: new Date(now - 7), // CAN NOT
-          created_at: new Date(now - 7) // CAN NOT
+          failed_at: new Date(now - 6),
+          created_at: new Date(now - 6)
         });
 
         await storage.insert_record({
           activity_code: 'SEQUENCE',
           status: 'RUNNING',
-          created_at: new Date(now - 6)
+          created_at: new Date(now - 5)
         });
 
         await storage.insert_record({
           activity_code: 'PARALLEL',
+          status: 'RUNNING',
+          created_at: new Date(now - 4)
+        });
+
+        await storage.insert_record({
+          activity_code: 'PARALLEL_UNRETRYABLE',
           status: 'RUNNING',
           created_at: new Date(now - 3)
         });
@@ -513,7 +578,7 @@ describe('TASK_SERVICE', () => {
 
       it('CRON', async function () {
         // start last
-        if (storage.code != 'SQL') {
+        if (storage.code != 'REDIS') {
           return;
         }
         this.timeout(5000)

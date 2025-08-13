@@ -14,6 +14,7 @@ module.exports = (() => {
     cron_time: '*/5 * * * * *',
     cron_job: null,
     verbose: false,
+    is_test: false
   };
 
 
@@ -21,7 +22,7 @@ module.exports = (() => {
 
   const TaskManager = {
     TASK_CONST: _CONST.TASK,
-    start: function({ storage, task_limit = _private.task_limit, cron_time = _private.cron_time, is_test = false, verbose = _private.verbose }) {
+    start: function({ storage, task_limit = _private.task_limit, cron_time = _private.cron_time, is_test = _private.is_test, verbose = _private.verbose }) {
       if (_private.cron_job) {
         throw new Error(`Already start`);
       }
@@ -33,6 +34,7 @@ module.exports = (() => {
       _private.storage = storage;
       _private.task_limit = task_limit;
       _private.verbose  = verbose;
+      _private.is_test = is_test;
 
       const { TaskService } = require('../service/task-service.core');
 
@@ -67,6 +69,9 @@ module.exports = (() => {
 
         _private.cron_job = cron_job;
       }
+    },
+    isTest: function() {
+      return _private.is_test;
     },
     log: (str) => {
       if (_private.verbose) {
