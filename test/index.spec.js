@@ -4,7 +4,7 @@ const knex = require('knex');
 const { createClient } = require('redis');
 
 const _is = require("../src/utils/share/_is.utils.share");
-const { TaskManager, TaskService, TaskStorage: { TaskMongoStorage, TaskSQLStorage, TaskRedisStorage } } = require('../index');
+const { TaskManagerFactory, TaskServiceFactory, TaskStorage: { TaskMongoStorage, TaskSQLStorage, TaskRedisStorage } } = require('../index');
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms))
 
@@ -251,102 +251,116 @@ const reset_tests = [
 
 describe('TASK_SERVICE', () => {
 
-  before(async () => {
-    TaskManager.addActivity({
-      code: 'PARALLEL',
-      setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: true,  priority: 9, max_retry_times: 3 },
-      process: async ({ task }) => {
-        await sleep(3000);
-        if (task.input.i % 2 === 0) {
-          TaskManager.throwRetryableError({ code: 'ABC' });
-        }
-        return { ok: true, ...task.input };
-      }
-    })
+  let TaskManager = null;
+  let TaskService = null;
 
-    TaskManager.addActivity({
-      code: 'PARALLEL_LOWEST_PRIORITY',
-      setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: true,  priority: 0, max_retry_times: 3 },
-      process: async ({ task }) => {
-        await sleep(3000);
-        if (task.input.i % 2 === 0) {
-          TaskManager.throwError({ code: 'ABC' });
-        }
-        return { ok: true, ...task.input };
-      }
-    })
-
-    TaskManager.addActivity({
-      code: 'PARALLEL_UNRETRYABLE',
-      setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: false,  priority: 3 },
-      process: async ({ task }) => {
-        await sleep(3000);
-        if (task.input.i % 2 === 0) {
-          TaskManager.throwRetryableError({ code: 'ABC' });
-        }
-        return { ok: true, ...task.input };
-      }
-    })
-
-    TaskManager.addActivity({
-      code: 'SEQUENCE',
-      setting: {
-        mode: TaskManager.TASK_CONST.MODE.SEQUENCE,
-        retryable: true,
-        max_retry_times: 2,
-      },
-      process: async ({ task }) => {
-        await sleep(3000);
-        if (task.input.i % 2 === 0) {
-          TaskManager.throwRetryableError({ code: 'ABC' });
-        }
-        return { ok: true, ...task.input };
-      }
-    })
-
-    TaskManager.addActivity({
-      code: 'SEQUENCE2',
-      setting: {
-        mode: TaskManager.TASK_CONST.MODE.SEQUENCE,
-        retryable: false,
-      },
-      process: async ({ task }) => {
-        await sleep(3000);
-        if (task.input.i % 2 === 0) {
-          TaskManager.throwRetryableError({ code: 'ABC' });
-        }
-        return { ok: true, ...task.input };
-      }
-    })
-
-  })
 
   for (const storage of storages) {
+
+    before(async () => {
+
+      await storage.init_storage()
+
+      await storage.clear_record();
+
+    })
+
+    after(async () => {
+      await storage.clear_record();
+    })
   
     describe(`TASK_${storage.code}`, () => {
       let tasks = [];
-  
+
       before(async () => {
+        TaskManager = TaskManagerFactory({ storage: storage.storage, task_limit: 3, verbose: true });
 
-        await storage.init_storage()
-
-        await storage.clear_record();
-  
-        TaskManager.start({
-          storage: storage.storage,
-          task_limit: 3,
-          verbose: false,
-          is_test: true
-        });
+        TaskService = TaskServiceFactory({ task_manager: TaskManager })
       })
+      
 
-      after(async () => {
-        await storage.clear_record();
+      before(async () => {
+        TaskManager.addActivity({
+          code: 'PARALLEL',
+          setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: true,  priority: 9, max_retry_times: 3 },
+          process: async ({ task }) => {
+            await sleep(3000);
+            console.log(`[${storage.code}]`);
+            if (task.input.i % 2 === 0) {
+              TaskManager.throwRetryableError({ code: 'ABC' });
+            }
+            return { ok: true, ...task.input };
+          }
+        })
+    
+        TaskManager.addActivity({
+          code: 'PARALLEL_LOWEST_PRIORITY',
+          setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: true,  priority: 0, max_retry_times: 3 },
+          process: async ({ task }) => {
+            await sleep(3000);
+            console.log(`[${storage.code}]`);
+            if (task.input.i % 2 === 0) {
+              TaskManager.throwError({ code: 'ABC' });
+            }
+            return { ok: true, ...task.input };
+          }
+        })
+    
+        TaskManager.addActivity({
+          code: 'PARALLEL_UNRETRYABLE',
+          setting: { mode: TaskManager.TASK_CONST.MODE.PARALLEL, retryable: false,  priority: 3 },
+          process: async ({ task }) => {
+            await sleep(3000);
+            console.log(`[${storage.code}]`);
+            if (task.input.i % 2 === 0) {
+              TaskManager.throwRetryableError({ code: 'ABC' });
+            }
+            return { ok: true, ...task.input };
+          }
+        })
+    
+        TaskManager.addActivity({
+          code: 'SEQUENCE',
+          setting: {
+            mode: TaskManager.TASK_CONST.MODE.SEQUENCE,
+            retryable: true,
+            max_retry_times: 2,
+          },
+          process: async ({ task }) => {
+            await sleep(3000);
+            console.log(`[${storage.code}]`);
+            if (task.input.i % 2 === 0) {
+              TaskManager.throwRetryableError({ code: 'ABC' });
+            }
+            return { ok: true, ...task.input };
+          }
+        })
+    
+        TaskManager.addActivity({
+          code: 'SEQUENCE2',
+          setting: {
+            mode: TaskManager.TASK_CONST.MODE.SEQUENCE,
+            retryable: false,
+          },
+          process: async ({ task }) => {
+            await sleep(3000);
+            console.log(`[${storage.code}]`);
+            if (task.input.i % 2 === 0) {
+              TaskManager.throwRetryableError({ code: 'ABC' });
+            }
+            return { ok: true, ...task.input };
+          }
+        })
+    
       })
   
       it('CREATE_TASK', async () => {
         for (const test of tests) {
-          await TaskService.createTask(test.task);
+          const { created_task } = await TaskService.createTask(test.task);
+
+          if (storage.code === 'REDIS') {
+            await storage.storage.redis.rPush(`tasks`, created_task._id)
+          }
         }
   
         tasks = await storage.all_task();
@@ -577,18 +591,42 @@ describe('TASK_SERVICE', () => {
       })
 
       it('CRON', async function () {
-        // start last
-        if (storage.code != 'REDIS') {
-          return;
-        }
-        this.timeout(5000)
-        TaskManager.start({
-          storage: storage.storage,
-          task_limit: 3,
-          verbose: true,
-        });
+        this.timeout(100000)
+        await storage.clear_record();
 
-        await sleep(4000)
+        for (const test of tests) {
+          const { created_task } = await TaskService.createTask(test.task);
+
+          if (storage.code === 'REDIS') {
+            await storage.storage.redis.rPush(`tasks`, created_task._id)
+          }
+        }
+        TaskManager.start({ task_service: TaskService });
+
+        let times = 0;
+        while(true) {
+          if (times > 10) {
+            throw new Error('Failed');
+          }
+          await sleep(10000);
+  
+          tasks = await storage.all_task()
+
+          let is_all_finished = true;
+    
+          for (const index in tasks) {
+            const task = tasks[index];
+            if (!['FINISHED', 'FAILED'].includes(task.status)) {
+              is_all_finished = false;
+            }
+          }
+
+          times += 1;
+
+          if (is_all_finished) {
+            break;
+          }
+        }
       })
     })
   }

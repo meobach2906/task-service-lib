@@ -3,13 +3,12 @@ const uuid = require('uuid');
 
 const _is = require('../../../utils/share/_is.utils.share');
 const _ERR = require('../../../utils/share/_ERR.utils.share');
-
-const { TaskManager } = require('../manager/task-manager.core');
+const _CONST = require("../../../utils/share/_CONST.utils.share");
 
 class TaskRedisStorage {
   static storage = null;
 
-  CODE = TaskManager.TASK_CONST.STORAGE.REDIS;
+  CODE = _CONST.TASK.STORAGE.REDIS;
 
   static async init({ redis }) {
     const storage = new TaskRedisStorage({ redis });
@@ -70,12 +69,10 @@ class TaskRedisStorage {
     }
   }
 
-  async createTask({ activity_code, input = {} }) {
+  async createTask({ activity, input = {} }) {
     const result = {
       created_task: null,
     };
-
-    const activity = TaskManager.assertActivity({ code: activity_code });
 
     const _id = uuid.v4();
 
@@ -83,8 +80,8 @@ class TaskRedisStorage {
 
     const task = {
       _id: _id,
-      activity_code: activity_code,
-      status: TaskManager.TASK_CONST.STATUS.IDLE,
+      activity_code: activity.code,
+      status: _CONST.TASK.STATUS.IDLE,
       input: JSON.stringify(input),
       priority: String(activity.priority),
       max_retry_times: String(activity.max_retry_times),
@@ -101,14 +98,12 @@ class TaskRedisStorage {
       return created_task
     `
 
-    result.created_task = await this.redis.eval(script, {
+    await this.redis.eval(script, {
       keys: [`task:${task._id}`, `idle_tasks:${task.activity_code}:${task.priority}`],
       arguments: [task._id, task.activity_code, task.status, task.input, task.priority, task.max_retry_times, task.retry_times, task.created_at, task.updated_at, JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: task.priority, created_at: task.created_at })]
     })
 
-    if (TaskManager.isTest()) {
-      await this.redis.rPush(`tasks`, task._id)
-    }
+    result.created_task = await this.redis.hGetAll(`task:${task._id}`);
 
     return result;
   }
@@ -158,7 +153,7 @@ class TaskRedisStorage {
     })
   }
 
-  async parallelTasks({ parallel_activity_codes = [] }) {
+  async parallelTasks({ parallel_activity_codes = [], limit }) {
     const result = {
       runnable_tasks: [],
     };
@@ -167,7 +162,7 @@ class TaskRedisStorage {
       return result;
     }
 
-    let remain_slot = TaskManager.getTaskLimit();
+    let remain_slot = limit;
 
     const running_tasks = await this.redis.lRange(`running_tasks`, 0, -1);
     const parallel_running_tasks = [];
@@ -248,12 +243,12 @@ class TaskRedisStorage {
     return result;
   }
 
-  async sequenceTasks({ sequence_activity_codes = [] }) {
+  async sequenceTasks({ sequence_activity_codes = [], limit }) {
     const result = {
       runnable_tasks: [],
     };
 
-    let remain_slot = TaskManager.getTaskLimit();
+    let remain_slot = limit;
 
     const running_tasks = await this.redis.lRange(`running_tasks`, 0, -1);
     const sequence_running_tasks = [];
@@ -353,11 +348,11 @@ class TaskRedisStorage {
     const script = `
       local updated_task = redis.call('HSET', KEYS[1], 'status', ARGV[2], 'running_at', ARGV[3], 'updated_at', ARGV[3])
 
-      if ARGV[4] == '${TaskManager.TASK_CONST.STATUS.IDLE}' then
+      if ARGV[4] == '${_CONST.TASK.STATUS.IDLE}' then
         redis.call('LREM', KEYS[2], 0, ARGV[5])
       end
 
-      if ARGV[4] == '${TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED}' then
+      if ARGV[4] == '${_CONST.TASK.STATUS.TEMPORARILY_FAILED}' then
         redis.call('LREM', 'temporarily_failed_tasks', 0, ARGV[5])
       end
 
@@ -368,7 +363,7 @@ class TaskRedisStorage {
 
     result.updated_task = await this.redis.eval(script, {
       keys: [`task:${task._id}`, `idle_tasks:${task.activity_code}:${task.priority}`],
-      arguments: [task._id, TaskManager.TASK_CONST.STATUS.RUNNING, now.toISOString(), task.status, JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: task.priority, created_at: task.created_at })]
+      arguments: [task._id, _CONST.TASK.STATUS.RUNNING, now.toISOString(), task.status, JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: task.priority, created_at: task.created_at })]
     })
 
     result.updated_task = await this.redis.hGetAll(`task:${task._id}`);
@@ -380,8 +375,6 @@ class TaskRedisStorage {
     const result = {
       updated_task: null,
     };
-
-    const activity = TaskManager.assertActivity({ code: task.activity_code })
 
     const now = new Date();
 
@@ -397,7 +390,7 @@ class TaskRedisStorage {
 
     await this.redis.eval(script, {
       keys: [`task:${task._id}`],
-      arguments: [task._id, TaskManager.TASK_CONST.STATUS.FINISHED, output ? JSON.stringify(output) : '', now.toISOString(), JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: task.priority, created_at: task.created_at }), JSON.stringify({ _id: task._id, activity_code: task.activity_code, finished_at: now.toISOString() })]
+      arguments: [task._id, _CONST.TASK.STATUS.FINISHED, output ? JSON.stringify(output) : '', now.toISOString(), JSON.stringify({ _id: task._id, activity_code: task.activity_code, priority: task.priority, created_at: task.created_at }), JSON.stringify({ _id: task._id, activity_code: task.activity_code, finished_at: now.toISOString() })]
     })
 
     result.updated_task = await this.redis.hGetAll(`task:${task._id}`);
@@ -405,23 +398,21 @@ class TaskRedisStorage {
     return result;
   }
 
-  async failTask({ task, error }) {
+  async failTask({ task, activity, error }) {
     const result = {
       updated_task: null,
     };
 
-    const activity = TaskManager.assertActivity({ code: task.activity_code });
-
     const now = new Date();
 
-    const status = _is.retry({ error }) && (_is.activity.retryable({ activity }) && (!Number(task.max_retry_times) || Number(task.retry_times) + 1 < Number(task.max_retry_times))) ? TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED : TaskManager.TASK_CONST.STATUS.FAILED;
+    const status = _is.retry({ error }) && (_is.activity.retryable({ activity }) && (!Number(task.max_retry_times) || Number(task.retry_times) + 1 < Number(task.max_retry_times))) ? _CONST.TASK.STATUS.TEMPORARILY_FAILED : _CONST.TASK.STATUS.FAILED;
 
     const script = `
       local updated_task = redis.call('HSET', KEYS[1], 'status', ARGV[2], 'error', ARGV[3], 'failed_at', ARGV[4], 'updated_at', ARGV[4], 'retry_times', ARGV[5])
 
       redis.call('LREM', 'running_tasks', 0, ARGV[6])
 
-      if ARGV[2] == '${TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED}' then
+      if ARGV[2] == '${_CONST.TASK.STATUS.TEMPORARILY_FAILED}' then
         redis.call('RPUSH', 'temporarily_failed_tasks', ARGV[6])
       end
 
@@ -439,28 +430,9 @@ class TaskRedisStorage {
 
   }
 
-  async process({ task, is_waiting = false }) {
-    const { updated_task } = await this.startTask({ task });
-
-    updated_task.input = JSON.parse(updated_task.input);
-
-    const promise = TaskManager.processTask({ task: updated_task })
-      .then(async result => {
-        TaskManager.log(`[FINISHED] [PROCESS_TASK] [ID: ${String(task._id)}] [RESULT: ${JSON.stringify(result)}]`);
-        return await this.finishTask({ task: updated_task, result });
-      })
-      .catch(async error => {
-        TaskManager.log(`[FAILED] [PROCESS_TASK] [ID: ${String(task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
-        return await this.failTask({ task: updated_task, error });
-      })
-
-    if (is_waiting) {
-      return await promise;
-    }
-
-    return { updated_task };
+  parseStorageObjectField(data) {
+    return data ? JSON.parse(data) : null;
   }
-
 }
 
 module.exports = {

@@ -1,14 +1,13 @@
 const _is = require('../../../utils/share/_is.utils.share');
 const _ERR = require('../../../utils/share/_ERR.utils.share');
-
-const { TaskManager } = require('../manager/task-manager.core');
+const _CONST = require("../../../utils/share/_CONST.utils.share");
 
 class TaskMongoStorage {
   static storage = null;
 
   static #schema_name = 'task';
 
-  CODE = TaskManager.TASK_CONST.STORAGE.MONGO;
+  CODE = _CONST.TASK.STORAGE.MONGO;
 
   static async init({ mongoose, expired = 10 * 24 * 60 * 60 }) {
     const storage = new TaskMongoStorage({ mongoose, expired });
@@ -29,7 +28,7 @@ class TaskMongoStorage {
   async #initModel() {
     this.task_schema = new this.mongoose.Schema({
       activity_code: { type: String, require: true },
-      status: { type: String, default: TaskManager.TASK_CONST.STATUS.IDLE },
+      status: { type: String, default: _CONST.TASK.STATUS.IDLE },
       input: { type: Object, default: null },
       result: { type: Object, default: null },
       error: { type: Object, default: null },
@@ -54,15 +53,13 @@ class TaskMongoStorage {
 
   async expiredTask() {}
 
-  async createTask({ activity_code, input = {} }) {
+  async createTask({ activity, input = {} }) {
     const result = {
       created_task: null,
     };
 
-    const activity = TaskManager.assertActivity({ code: activity_code });
-
     result.created_task = await this.task_model.create({
-      activity_code: activity_code,
+      activity_code: activity.code,
       input: input,
       priority: activity.priority,
       max_retry_times: activity.max_retry_times,
@@ -73,11 +70,11 @@ class TaskMongoStorage {
 
   async resetTask({ retryable_activity_codes = [] }) {
     const now = new Date();
-    await this.task_model.updateMany({ status:TaskManager.TASK_CONST.STATUS.RUNNING, activity_code: { $in: retryable_activity_codes } }, { $set: { status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) }), updated_at: now } })
-    await this.task_model.updateMany({ status:TaskManager.TASK_CONST.STATUS.RUNNING, activity_code: { $nin: retryable_activity_codes } }, { $set: { status:TaskManager.TASK_CONST.STATUS.FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.ERR({ message: 'Reset running' }) }), failed_at: now, updated_at: now  } })
+    await this.task_model.updateMany({ status:_CONST.TASK.STATUS.RUNNING, activity_code: { $in: retryable_activity_codes } }, { $set: { status:_CONST.TASK.STATUS.TEMPORARILY_FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.TEMPORARILY_ERR({ message: 'Retry when reset running' }) }), updated_at: now } })
+    await this.task_model.updateMany({ status:_CONST.TASK.STATUS.RUNNING, activity_code: { $nin: retryable_activity_codes } }, { $set: { status:_CONST.TASK.STATUS.FAILED, error: _ERR.errorWithoutStack({ error: new _ERR.ERR({ message: 'Reset running' }) }), failed_at: now, updated_at: now  } })
   }
 
-  async parallelTasks({ parallel_activity_codes = [] }) {
+  async parallelTasks({ parallel_activity_codes = [], limit }) {
     const result = {
       runnable_tasks: [],
     };
@@ -86,9 +83,7 @@ class TaskMongoStorage {
       return result;
     }
 
-    const limit = TaskManager.getTaskLimit();
-
-    const running_slot = await this.task_model.count({ activity_code: { $in: parallel_activity_codes }, status:TaskManager.TASK_CONST.STATUS.RUNNING });
+    const running_slot = await this.task_model.count({ activity_code: { $in: parallel_activity_codes }, status:_CONST.TASK.STATUS.RUNNING });
 
     let remain_slot = limit - running_slot;
 
@@ -96,7 +91,7 @@ class TaskMongoStorage {
       return result;
     }
 
-    const retryable_tasks = await this.task_model.find({ activity_code:  { $in: parallel_activity_codes }, status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).sort({ failed_at: 'asc', created_at: 'asc' }).limit(remain_slot).lean(true);
+    const retryable_tasks = await this.task_model.find({ activity_code:  { $in: parallel_activity_codes }, status:_CONST.TASK.STATUS.TEMPORARILY_FAILED }).sort({ failed_at: 'asc', created_at: 'asc' }).limit(remain_slot).lean(true);
 
     result.runnable_tasks.push(...retryable_tasks);
 
@@ -106,14 +101,14 @@ class TaskMongoStorage {
       return result;
     }
 
-    const idle_tasks = await this.task_model.find({ activity_code: { $in: parallel_activity_codes }, status:TaskManager.TASK_CONST.STATUS.IDLE }).sort({ priority: 'desc', created_at: 'asc' }).limit(remain_slot).lean(true);
+    const idle_tasks = await this.task_model.find({ activity_code: { $in: parallel_activity_codes }, status:_CONST.TASK.STATUS.IDLE }).sort({ priority: 'desc', created_at: 'asc' }).limit(remain_slot).lean(true);
 
     result.runnable_tasks.push(...idle_tasks);
 
     return result;
   }
 
-  async sequenceTasks({ sequence_activity_codes = [] }) {
+  async sequenceTasks({ sequence_activity_codes = [], limit }) {
     const result = {
       runnable_tasks: [],
     };
@@ -122,9 +117,7 @@ class TaskMongoStorage {
       return result;
     }
 
-    const limit = TaskManager.getTaskLimit();
-
-    const running_tasks = await this.task_model.find({ activity_code: { $in: sequence_activity_codes }, status:TaskManager.TASK_CONST.STATUS.RUNNING }).lean(true);
+    const running_tasks = await this.task_model.find({ activity_code: { $in: sequence_activity_codes }, status:_CONST.TASK.STATUS.RUNNING }).lean(true);
 
     let remain_slot = limit - running_tasks.length;
 
@@ -138,7 +131,7 @@ class TaskMongoStorage {
       return result;
     }
 
-    const retryable_tasks = await this.task_model.find({ activity_code: { $in: sequence_activity_codes }, status:TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED }).sort({ failed_at: 'asc', created_at: 'asc' }).lean(true);
+    const retryable_tasks = await this.task_model.find({ activity_code: { $in: sequence_activity_codes }, status:_CONST.TASK.STATUS.TEMPORARILY_FAILED }).sort({ failed_at: 'asc', created_at: 'asc' }).lean(true);
 
     for (const retryable_task of retryable_tasks) {
       if (!result.runnable_tasks.find(runnable_task => runnable_task.activity_code === retryable_task.activity_code)) {
@@ -163,7 +156,7 @@ class TaskMongoStorage {
     }
 
     const idle_tasks = await this.task_model.aggregate([
-      { $match: { activity_code:  { $in: sequence_activity_codes }, status:TaskManager.TASK_CONST.STATUS.IDLE } },
+      { $match: { activity_code:  { $in: sequence_activity_codes }, status:_CONST.TASK.STATUS.IDLE } },
       { $sort: { priority: -1, created_at: 1 } },
       { $group: { _id: '$activity_code', task: { $first: '$$ROOT' } } },
       { $replaceRoot: { newRoot: "$task" } },
@@ -183,7 +176,7 @@ class TaskMongoStorage {
 
     const now = new Date();
 
-    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id, updated_at: task.updated_at }, { $set: { status:TaskManager.TASK_CONST.STATUS.RUNNING, running_at: now,  updated_at: now } }, { new: true });
+    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id, updated_at: task.updated_at }, { $set: { status:_CONST.TASK.STATUS.RUNNING, running_at: now,  updated_at: now } }, { new: true });
 
     if (!result.updated_task) {
       throw new Error(`Cannot start task because task updated before`);
@@ -199,45 +192,27 @@ class TaskMongoStorage {
 
     const now = new Date();
 
-    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id }, { $set: { status:TaskManager.TASK_CONST.STATUS.FINISHED, result: output, finished_at: now, updated_at: now } }, { new: true });
+    result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id }, { $set: { status:_CONST.TASK.STATUS.FINISHED, result: output, finished_at: now, updated_at: now } }, { new: true });
 
     return result;
   }
 
-  async failTask({ task, error }) {
+  async failTask({ task, activity, error }) {
     const result = {
       updated_task: null,
     };
 
     const now = new Date();
 
-    const activity = TaskManager.assertActivity({ code: task.activity_code })
-
-    const status = _is.retry({ error }) && (_is.activity.retryable({ activity }) && (!task.max_retry_times || task.retry_times + 1 < task.max_retry_times) ) ? TaskManager.TASK_CONST.STATUS.TEMPORARILY_FAILED : TaskManager.TASK_CONST.STATUS.FAILED;
+    const status = _is.retry({ error }) && (_is.activity.retryable({ activity }) && (!task.max_retry_times || task.retry_times + 1 < task.max_retry_times) ) ? _CONST.TASK.STATUS.TEMPORARILY_FAILED : _CONST.TASK.STATUS.FAILED;
 
     result.updated_task = await this.task_model.findOneAndUpdate({ _id: task._id }, { $set: { status: status, error: _ERR.errorWithoutStack({ error }), failed_at: now, updated_at: now }, $inc: { retry_times: 1 } }, { new: true });
 
     return result;
   }
 
-  async process({ task, is_waiting = false }) {
-    const { updated_task } = await this.startTask({ task });
-
-    const promise = TaskManager.processTask({ task: updated_task })
-      .then(async result => {
-        TaskManager.log(`[FINISHED] [PROCESS_TASK] [ID: ${String(task._id)}] [RESULT: ${JSON.stringify(result)}]`);
-        return await this.finishTask({ task: updated_task, result });
-      })
-      .catch(async error => {
-        TaskManager.log(`[FAILED] [PROCESS_TASK] [ID: ${String(task._id)}] [ERROR: ${_ERR.stringify({ error })}]`);
-        return await this.failTask({ task: updated_task, error });
-      })
-    
-    if (is_waiting) {
-      return await promise;
-    }
-
-    return { updated_task };
+  parseStorageObjectField(data) {
+    return data;
   }
 
 }
